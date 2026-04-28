@@ -2,22 +2,38 @@ import os
 import traceback
 from telegram.ext import Application, MessageHandler, filters
 
-# --- ENV TOKEN ---
+# --- ENV ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN is not set in environment variables")
+    raise ValueError("BOT_TOKEN not set")
 
 # --- CONFIG ---
 SOURCE_CHAT_ID = -1002813360979      # PCMKR Division
 TARGET_CHAT_ID = -1002962986373      # KDMV ORDERS
 TARGET_TOPIC_ID = 4491               # Website payment topic
+PAYWAY_BOT_ID = 1148497258           # PayWay bot
+MONITOR_CHAT_ID = -100XXXXXXXXXX     # your admin / log group
 
-PAYWAY_BOT_ID = 1148497258           # PayWayByABA_bot
+
+# --- STATUS ---
+async def send_status(app, text):
+    try:
+        await app.bot.send_message(chat_id=MONITOR_CHAT_ID, text=text)
+    except Exception as e:
+        print("Status error:", e)
+
+
+async def on_startup(app):
+    await send_status(app, "🟢 Relay Bot ONLINE")
+
+
+async def on_shutdown(app):
+    await send_status(app, "🔴 Relay Bot OFFLINE")
 
 
 # --- ERROR HANDLER ---
 async def error_handler(update, context):
-    print("\n===== FULL ERROR =====")
+    print("\n=== ERROR ===")
     print("Update:", update)
     print("Error:", context.error)
 
@@ -26,68 +42,41 @@ async def error_handler(update, context):
         context.error,
         context.error.__traceback__
     )
-    print("======================\n")
+    print("=============\n")
 
 
-# --- RELAY LOGIC ---
+# --- RELAY ---
 async def relay(update, context):
     msg = update.message
     if not msg:
         return
 
-    # ===== DEBUG LOG =====
-    print("\n===== NEW MESSAGE =====")
-    print("CHAT ID:", msg.chat_id)
-    print("THREAD ID:", msg.message_thread_id)
-    print("TEXT:", msg.text)
-
-    if msg.forward_origin:
-        print("FORWARD_ORIGIN:", msg.forward_origin)
-        if hasattr(msg.forward_origin, "sender_user"):
-            print("FORWARD_ORIGIN USER ID:", msg.forward_origin.sender_user.id)
-
-    if msg.forward_from:
-        print("FORWARD_FROM:", msg.forward_from)
-        print("FORWARD_FROM ID:", msg.forward_from.id)
-
-    # ===== FILTERS =====
-
-    # 1. Source group only
+    # Source group only
     if msg.chat_id != SOURCE_CHAT_ID:
-        print("❌ Not source group")
         return
 
-    # 2. Only General topic
+    # Only General topic (no thread)
     if msg.message_thread_id is not None:
-        print("❌ Not General topic")
         return
 
-    # 3. Must be text
+    # Must be text
     if not msg.text:
-        print("❌ No text")
         return
 
-    # 4. Detect PayWay source
+    # Detect PayWay forwarded message
     is_payway = False
 
-    if msg.forward_origin:
-        if hasattr(msg.forward_origin, "sender_user"):
-            if msg.forward_origin.sender_user.id == PAYWAY_BOT_ID:
-                is_payway = True
-
-    if msg.forward_from:
-        if msg.forward_from.id == PAYWAY_BOT_ID:
+    if msg.forward_origin and hasattr(msg.forward_origin, "sender_user"):
+        if msg.forward_origin.sender_user.id == PAYWAY_BOT_ID:
             is_payway = True
 
-    print("IS PAYWAY:", is_payway)
+    if msg.forward_from and msg.forward_from.id == PAYWAY_BOT_ID:
+        is_payway = True
 
     if not is_payway:
-        print("❌ Filtered out (not PayWay)")
         return
 
-    # ===== RELAY =====
-    print("✅ RELAYING MESSAGE")
-
+    # Relay
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID,
         text=msg.text,
@@ -101,6 +90,10 @@ def main():
 
     app.add_handler(MessageHandler(filters.ALL, relay))
     app.add_error_handler(error_handler)
+
+    # lifecycle
+    app.post_init = on_startup
+    app.post_shutdown = on_shutdown
 
     app.run_polling(drop_pending_updates=True)
 
