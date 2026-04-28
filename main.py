@@ -12,23 +12,26 @@ SOURCE_CHAT_ID = -1002813360979      # PCMKR Division
 TARGET_CHAT_ID = -1002962986373      # KDMV ORDERS
 TARGET_TOPIC_ID = 4491               # Website payment topic
 PAYWAY_BOT_ID = 1148497258           # PayWay bot
-MONITOR_CHAT_ID = -100XXXXXXXXXX     # your admin / log group
 
 
-# --- STATUS ---
-async def send_status(app, text):
-    try:
-        await app.bot.send_message(chat_id=MONITOR_CHAT_ID, text=text)
-    except Exception as e:
-        print("Status error:", e)
-
-
+# --- STARTUP STATUS ---
 async def on_startup(app):
-    await send_status(app, "🟢 Relay Bot ONLINE")
+    try:
+        # Send to SOURCE (general chat)
+        await app.bot.send_message(
+            chat_id=SOURCE_CHAT_ID,
+            text="🟢 Relay Bot ONLINE"
+        )
 
+        # Send to TARGET (specific topic)
+        await app.bot.send_message(
+            chat_id=TARGET_CHAT_ID,
+            text="🟢 Relay Bot ONLINE",
+            message_thread_id=TARGET_TOPIC_ID
+        )
 
-async def on_shutdown(app):
-    await send_status(app, "🔴 Relay Bot OFFLINE")
+    except Exception as e:
+        print("Startup notify failed:", e)
 
 
 # --- ERROR HANDLER ---
@@ -55,7 +58,7 @@ async def relay(update, context):
     if msg.chat_id != SOURCE_CHAT_ID:
         return
 
-    # Only General topic (no thread)
+    # Only General topic
     if msg.message_thread_id is not None:
         return
 
@@ -76,7 +79,7 @@ async def relay(update, context):
     if not is_payway:
         return
 
-    # Relay
+    # Relay to target topic
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID,
         text=msg.text,
@@ -91,9 +94,7 @@ def main():
     app.add_handler(MessageHandler(filters.ALL, relay))
     app.add_error_handler(error_handler)
 
-    # lifecycle
     app.post_init = on_startup
-    app.post_shutdown = on_shutdown
 
     app.run_polling(drop_pending_updates=True)
 
