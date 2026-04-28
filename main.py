@@ -1,4 +1,5 @@
 import os
+import traceback
 from telegram.ext import Application, MessageHandler, filters
 
 # --- ENV TOKEN ---
@@ -12,6 +13,20 @@ TARGET_CHAT_ID = -1002962986373      # KDMV ORDERS
 TARGET_TOPIC_ID = 4491               # Website payment topic
 
 PAYWAY_BOT_ID = 1148497258           # PayWayByABA_bot
+
+
+# --- ERROR HANDLER ---
+async def error_handler(update, context):
+    print("\n===== FULL ERROR =====")
+    print("Update:", update)
+    print("Error:", context.error)
+
+    traceback.print_exception(
+        type(context.error),
+        context.error,
+        context.error.__traceback__
+    )
+    print("======================\n")
 
 
 # --- RELAY LOGIC ---
@@ -55,13 +70,11 @@ async def relay(update, context):
     # 4. Detect PayWay source
     is_payway = False
 
-    # New Telegram format
     if msg.forward_origin:
         if hasattr(msg.forward_origin, "sender_user"):
             if msg.forward_origin.sender_user.id == PAYWAY_BOT_ID:
                 is_payway = True
 
-    # Old fallback
     if msg.forward_from:
         if msg.forward_from.id == PAYWAY_BOT_ID:
             is_payway = True
@@ -85,7 +98,10 @@ async def relay(update, context):
 # --- MAIN ---
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+
     app.add_handler(MessageHandler(filters.ALL, relay))
+    app.add_error_handler(error_handler)
+
     app.run_polling(drop_pending_updates=True)
 
 
