@@ -1,4 +1,5 @@
 import os
+import re
 import traceback
 from telegram.ext import Application, MessageHandler, filters
 
@@ -11,28 +12,30 @@ if not BOT_TOKEN:
 SOURCE_CHAT_ID = -1002813360979      # PCMKR Division
 TARGET_CHAT_ID = -1002962986373      # KDMV ORDERS
 TARGET_TOPIC_ID = 4491               # Website payment topic
-PAYWAY_BOT_ID = 1148497258           # PayWay bot
 
+# --- PAYMENT PATTERN ---
+PAYMENT_PATTERN = re.compile(
+    r"\$\d+(?:\.\d{2})?.*paid by.*ABA PAY.*Trx\. ID:.*APV:",
+    re.IGNORECASE
+)
 
-# --- STARTUP STATUS ---
+# --- STARTUP MESSAGE ---
 async def on_startup(app):
     try:
-        # Send to SOURCE (general chat)
+        # Source group
         await app.bot.send_message(
             chat_id=SOURCE_CHAT_ID,
             text="🟢 Relay Bot ONLINE"
         )
 
-        # Send to TARGET (specific topic)
+        # Target topic
         await app.bot.send_message(
             chat_id=TARGET_CHAT_ID,
             text="🟢 Relay Bot ONLINE",
             message_thread_id=TARGET_TOPIC_ID
         )
-
     except Exception as e:
         print("Startup notify failed:", e)
-
 
 # --- ERROR HANDLER ---
 async def error_handler(update, context):
@@ -47,14 +50,13 @@ async def error_handler(update, context):
     )
     print("=============\n")
 
-
-# --- RELAY ---
+# --- RELAY LOGIC ---
 async def relay(update, context):
     msg = update.message
     if not msg:
         return
 
-    # Source group only
+    # Only source group
     if msg.chat_id != SOURCE_CHAT_ID:
         return
 
@@ -66,26 +68,18 @@ async def relay(update, context):
     if not msg.text:
         return
 
-    # Detect PayWay forwarded message
-    is_payway = False
+    text = msg.text.strip()
 
-    if msg.forward_origin and hasattr(msg.forward_origin, "sender_user"):
-        if msg.forward_origin.sender_user.id == PAYWAY_BOT_ID:
-            is_payway = True
-
-    if msg.forward_from and msg.forward_from.id == PAYWAY_BOT_ID:
-        is_payway = True
-
-    if not is_payway:
+    # Match payment structure
+    if not PAYMENT_PATTERN.search(text):
         return
 
     # Relay to target topic
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID,
-        text=msg.text,
+        text=text,
         message_thread_id=TARGET_TOPIC_ID
     )
-
 
 # --- MAIN ---
 def main():
@@ -97,7 +91,6 @@ def main():
     app.post_init = on_startup
 
     app.run_polling(drop_pending_updates=True)
-
 
 if __name__ == "__main__":
     main()
