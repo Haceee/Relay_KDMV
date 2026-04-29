@@ -13,8 +13,10 @@ SOURCE_CHAT_ID = -1002813360979
 TARGET_CHAT_ID = -1002962986373
 TARGET_TOPIC_ID = 4491
 
+ABA_BOT_ID = 1148497258  # PayWayByABA_bot
 
-# --- STARTUP MESSAGE ---
+
+# --- STARTUP ---
 async def on_startup(app):
     try:
         await app.bot.send_message(
@@ -45,11 +47,10 @@ async def error_handler(update, context):
     print("=============\n")
 
 
-# --- PARSER (FIXED) ---
+# --- PARSER ---
 def parse_payment(text: str):
     amount = re.search(r"\$(\d+(?:\.\d{2})?)", text)
 
-    # FIXED NAME PARSER
     name = re.search(r"paid by\s+(.+?)\s+\(\*\d+\)", text, re.IGNORECASE)
 
     trx = re.search(r"Trx\. ID:\s*([A-Za-z0-9]+)", text, re.IGNORECASE)
@@ -69,6 +70,7 @@ async def relay(update, context):
     if not msg:
         return
 
+    # Only source group
     if msg.chat_id != SOURCE_CHAT_ID:
         return
 
@@ -78,7 +80,9 @@ async def relay(update, context):
     text = msg.text.strip()
     text_lower = text.lower()
 
-    # --- TEST MODE ---
+    # =========================
+    # TEST MODE
+    # =========================
     if text.startswith("TESTPAY"):
         sample = text.replace("TESTPAY", "").strip()
 
@@ -89,7 +93,18 @@ async def relay(update, context):
         )
         return
 
-    # --- REAL PAYMENT CHECK ---
+    # =========================
+    # REAL ABA BOT MESSAGE FILTER
+    # =========================
+    if not msg.from_user:
+        return
+
+    if msg.from_user.id != ABA_BOT_ID:
+        return
+
+    # =========================
+    # SAFETY CHECK
+    # =========================
     if (
         "$" not in text or
         "trx. id" not in text_lower or
@@ -97,7 +112,9 @@ async def relay(update, context):
     ):
         return
 
-    # --- PARSE + FORMAT ---
+    # =========================
+    # PARSE + FORMAT
+    # =========================
     data = parse_payment(text)
 
     formatted = (
@@ -107,7 +124,9 @@ async def relay(update, context):
         f"APV: {data['apv']}"
     )
 
-    # --- SEND ---
+    # =========================
+    # SEND
+    # =========================
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID,
         text=formatted,
